@@ -359,10 +359,9 @@ export default function Home() {
             {/* Papers */}
             {tab === "papers" && (
               <div className="rm-fade rm-papers">
-                {papers
-                  .slice()
-                  .sort((a, b) => b.score - a.score)
-                  .map((p, i) => (
+                {(() => {
+                    const list = Array.isArray(papers) ? papers : Object.values(papers || {});
+                    return list.slice().sort((a, b) => (b?.score || 0) - (a?.score || 0)).map((p, i) => (
                     <div key={i} className="rm-card">
                       <div className="rm-paper-head">
                         <a
@@ -385,8 +384,9 @@ export default function Home() {
                         <div><dt>Limitations</dt><dd>{p.limitations}</dd></div>
                       </dl>
                     </div>
-                  ))}
-              </div>
+                  ));
+                    })()
+                </div>
             )}
           </section>
         )}
