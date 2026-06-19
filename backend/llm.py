@@ -91,6 +91,28 @@ def _call_json(system: str, user: str, max_tokens: int = 2000):
     raise RuntimeError("Groq returned invalid JSON after retries. Try again.")
 
 
+# --- Helpers to avoid sending overly-large requests to the model ---
+def _short(s: str, n: int = 400) -> str:
+    if not isinstance(s, str):
+        s = str(s)
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+def _limit_list(items: list, per_item_fields: list, max_items: int = 12, per_field_len: int = 300):
+    """Return a compact textual listing for many items, truncating fields.
+
+    - items: list of dict-like objects
+    - per_item_fields: list of (label, key) pairs to include per item
+    """
+    out = []
+    for i, it in enumerate(items[:max_items]):
+        parts = []
+        for lbl, key in per_item_fields:
+            val = _short(it.get(key, ""), per_field_len)
+            parts.append(f"{lbl}: {val}")
+        out.append(f"[{i}] " + " | ".join(parts))
+    return "\n".join(out)
+
+
 # ---------- Stage 0: Topic Expansion ----------
 def expand_topic(topic: str) -> list:
     system = "You expand ML research topics into focused arXiv search queries."
@@ -157,10 +179,12 @@ paper does NOT solve or where it falls short (infer if not explicit).
 
 # ---------- Stage 4: Synthesize landscape ----------
 def synthesize(topic: str, extractions: list):
-    blob = "\n\n".join(
-        f"Paper: {e['title']}\nProblem: {e['problem']}\nMethod: {e['method']}\n"
-        f"Contribution: {e['contribution']}"
-        for e in extractions
+    # Keep the prompt bounded: include at most 12 papers and truncate fields.
+    blob = _limit_list(
+        extractions,
+        [("Paper", "title"), ("Problem", "problem"), ("Method", "method"), ("Contribution", "contribution")],
+        max_items=12,
+        per_field_len=300,
     )
     system = "You synthesize a research landscape across many ML papers."
     user = f"""
@@ -179,9 +203,11 @@ Return ONLY a JSON object with exactly these keys:
 
 # ---------- Stage 5: Graph ----------
 def build_graph(topic: str, extractions: list):
-    listing = "\n".join(
-        f"[{i}] {e['title']}\nMethod: {e['method']}\nContribution: {e['contribution']}"
-        for i, e in enumerate(extractions)
+    listing = _limit_list(
+        extractions,
+        [("Title", "title"), ("Method", "method"), ("Contribution", "contribution")],
+        max_items=18,
+        per_field_len=250,
     )
     system = "You map relationships between ML papers as a graph."
     user = f"""
@@ -201,7 +227,7 @@ Indices must refer to the papers listed above.
 
 # ---------- Feature: Gap Finder ----------
 def find_gaps(topic: str, extractions: list, clusters: list):
-    lims = "\n".join(f"- {e['title']}: {e['limitations']}" for e in extractions)
+    lims = _limit_list(extractions, [("Title", "title"), ("Limitations", "limitations")], max_items=20, per_field_len=240)
     cluster_names = ", ".join(
         c["name"] if isinstance(c, dict) else str(c) for c in clusters
     )
@@ -223,7 +249,7 @@ Be specific and concrete.
 
 # ---------- Feature: Reading Plans ----------
 def reading_plans(topic: str, extractions: list):
-    listing = "\n".join(f"- {e['title']}: {e['contribution']}" for e in extractions)
+    listing = _limit_list(extractions, [("Title", "title"), ("Contribution", "contribution")], max_items=20, per_field_len=240)
     system = "You design reading plans for different audiences in an ML field."
     user = f"""
 Topic: {topic}
