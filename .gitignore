@@ -4,13 +4,18 @@ backend/.env
 
 # Python
 backend/venv/
-backend/__pycache__/
 **/__pycache__/
 
-# Node / Next.js
-frontend/node_modules/
+# Node / Next.js — anywhere in the tree
+node_modules/
+**/node_modules/
+.next/
 frontend/.next/
 frontend/out/
+
+# Stray root npm files (you don't want these if the app lives in frontend/)
+/package.json
+/package-lock.json
 
 # OS / editor junk
 .DS_Store
