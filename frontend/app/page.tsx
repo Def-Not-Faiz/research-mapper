@@ -15,7 +15,7 @@ const STAGES = [
   { key: "plans", label: "Build reading plans" },
 ];
 
-const EDGE_COLORS = {
+const EDGE_COLORS: Record<string, string> = {
   builds_on: "#34d399",
   contrasts_with: "#f87171",
   shares_method: "#60a5fa",
@@ -24,18 +24,20 @@ const EDGE_COLORS = {
 
 // ---- Animated starfield drawn on a canvas ----
 function Starfield() {
-  const ref = useRef(null);
+  const ref = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
-    const canvas = ref.current;
+    const canvas = ref.current as HTMLCanvasElement | null;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    let raf;
-    let w, h;
-    let stars = [];
+    const canvasEl = canvas;
+    const ctx = canvasEl.getContext("2d") as CanvasRenderingContext2D;
+    let raf = 0;
+    let w = 0;
+    let h = 0;
+    let stars: Array<{ x: number; y: number; z: number; tw: number }> = [];
 
     function resize() {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
+      w = canvasEl.width = window.innerWidth;
+      h = canvasEl.height = window.innerHeight;
       const count = Math.floor((w * h) / 6000);
       stars = Array.from({ length: count }, () => ({
         x: Math.random() * w,
@@ -73,15 +75,43 @@ function Starfield() {
 }
 
 export default function Home() {
-  const [topic, setTopic] = useState("");
-  const [stageStatus, setStageStatus] = useState({});
-  const [papers, setPapers] = useState([]);
-  const [landscape, setLandscape] = useState(null);
-  const [graph, setGraph] = useState(null);
-  const [gaps, setGaps] = useState(null);
-  const [plans, setPlans] = useState(null);
+  const [topic, setTopic] = useState<string>("");
+  const [stageStatus, setStageStatus] = useState<Record<string, any>>({});
+  const [papers, setPapers] = useState<any[]>([]);
+  const [landscape, setLandscape] = useState<any>(null);
+  const [graph, setGraph] = useState<any>(null);
+  const [gaps, setGaps] = useState<any>(null);
+  const [plans, setPlans] = useState<any>(null);
   const [running, setRunning] = useState(false);
   const [tab, setTab] = useState("landscape");
+
+  const paperCards = (Array.isArray(papers) ? papers : Object.values(papers || {}))
+    .slice()
+    .sort((a, b) => (b?.score || 0) - (a?.score || 0))
+    .map((p, i) => (
+      <div key={i} className="rm-card">
+        <div className="rm-paper-head">
+          <a
+            href={p.url}
+            target="_blank"
+            rel="noreferrer"
+            className="rm-paper-title"
+          >
+            {p.title}
+          </a>
+          <span className="rm-score">
+            {p.score} · {p.year}
+          </span>
+        </div>
+        <dl className="rm-fields">
+          <div><dt>Problem</dt><dd>{p.problem}</dd></div>
+          <div><dt>Method</dt><dd>{p.method}</dd></div>
+          <div><dt>Results</dt><dd>{p.results}</dd></div>
+          <div><dt>Contribution</dt><dd>{p.contribution}</dd></div>
+          <div><dt>Limitations</dt><dd>{p.limitations}</dd></div>
+        </dl>
+      </div>
+    ));
 
   async function runSearch() {
     if (!topic.trim() || running) return;
@@ -100,7 +130,7 @@ export default function Home() {
         body: JSON.stringify({ topic }),
       });
 
-      const reader = res.body.getReader();
+      const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
@@ -109,19 +139,19 @@ export default function Home() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n\n");
-        buffer = lines.pop();
+        buffer = lines.pop() || "";
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           handleEvent(JSON.parse(line.slice(6)));
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       alert("Connection error: " + err.message);
     }
     setRunning(false);
   }
 
-  function handleEvent(evt) {
+  function handleEvent(evt: any) {
     const { stage, status, data } = evt;
     setStageStatus((prev) => ({ ...prev, [stage]: status }));
     if (stage === "error") {
@@ -140,7 +170,7 @@ export default function Home() {
   function flowData() {
     if (!graph?.nodes) return { nodes: [], edges: [] };
     const n = graph.nodes.length;
-    const nodes = graph.nodes.map((node, i) => {
+    const nodes = graph.nodes.map((node: any, i: number) => {
       const angle = (2 * Math.PI * i) / n;
       const radius = 260;
       return {
@@ -164,7 +194,7 @@ export default function Home() {
         },
       };
     });
-    const edges = (graph.edges || []).map((e, i) => ({
+    const edges = (graph.edges || []).map((e: any, i: number) => ({
       id: `e${i}`,
       source: String(e.source),
       target: String(e.target),
@@ -260,7 +290,7 @@ export default function Home() {
                 <p className="rm-overview">{landscape.overview}</p>
                 <h3 className="rm-h3">Clusters</h3>
                 <div className="rm-grid2">
-                  {landscape.clusters?.map((c, i) => (
+                  {landscape.clusters?.map((c: any, i: number) => (
                     <div
                       key={i}
                       className="rm-card"
@@ -275,7 +305,7 @@ export default function Home() {
                   <>
                     <h3 className="rm-h3">Tensions</h3>
                     <ul className="rm-list">
-                      {landscape.tensions.map((t, i) => (
+                      {landscape.tensions.map((t: any, i: number) => (
                         <li key={i}>{t}</li>
                       ))}
                     </ul>
@@ -319,7 +349,7 @@ export default function Home() {
                 <div>
                   <h3 className="rm-h3">Open Problems</h3>
                   <ul className="rm-list">
-                    {gaps.open_problems?.map((o, i) => (
+                    {gaps.open_problems?.map((o: any, i: number) => (
                       <li key={i}>{o}</li>
                     ))}
                   </ul>
@@ -327,7 +357,7 @@ export default function Home() {
                 <div>
                   <h3 className="rm-h3">Unexplored Gaps</h3>
                   <ul className="rm-list">
-                    {gaps.gaps?.map((g, i) => (
+                    {gaps.gaps?.map((g: any, i: number) => (
                       <li key={i}>{g}</li>
                     ))}
                   </ul>
@@ -342,7 +372,7 @@ export default function Home() {
                   <div key={level}>
                     <h3 className="rm-h3 rm-cap">{level}</h3>
                     <ol className="rm-plan">
-                      {plans[level]?.map((item, i) => (
+                      {plans[level]?.map((item: any, i: number) => (
                         <li key={i} className="rm-card">
                           <div className="rm-card-title">
                             {i + 1}. {item.title}
@@ -359,34 +389,8 @@ export default function Home() {
             {/* Papers */}
             {tab === "papers" && (
               <div className="rm-fade rm-papers">
-                {(() => {
-                    const list = Array.isArray(papers) ? papers : Object.values(papers || {});
-                    return list.slice().sort((a, b) => (b?.score || 0) - (a?.score || 0)).map((p, i) => (
-                    <div key={i} className="rm-card">
-                      <div className="rm-paper-head">
-                        <a
-                          href={p.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rm-paper-title"
-                        >
-                          {p.title}
-                        </a>
-                        <span className="rm-score">
-                          {p.score} · {p.year}
-                        </span>
-                      </div>
-                      <dl className="rm-fields">
-                        <div><dt>Problem</dt><dd>{p.problem}</dd></div>
-                        <div><dt>Method</dt><dd>{p.method}</dd></div>
-                        <div><dt>Results</dt><dd>{p.results}</dd></div>
-                        <div><dt>Contribution</dt><dd>{p.contribution}</dd></div>
-                        <div><dt>Limitations</dt><dd>{p.limitations}</dd></div>
-                      </dl>
-                    </div>
-                  ));
-                    })()
-                </div>
+                {paperCards}
+              </div>
             )}
           </section>
         )}
