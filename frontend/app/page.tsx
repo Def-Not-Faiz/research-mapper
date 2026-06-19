@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import ReactFlow, { Background, Controls } from "reactflow";
-import "reactflow/dist/style.css";
 
 const STAGES = [
   { key: "expand", label: "Expand topic into queries" },
