@@ -1,0 +1,302 @@
+"use client";
+
+import { useState } from "react";
+import ReactFlow, { Background, Controls } from "reactflow";
+import "reactflow/dist/style.css";
+
+const STAGES = [
+  { key: "expand", label: "Expand topic into queries" },
+  { key: "retrieve", label: "Retrieve papers from arXiv" },
+  { key: "rerank", label: "Rerank by relevance" },
+  { key: "extract", label: "Extract structured summaries" },
+  { key: "synthesize", label: "Synthesize landscape" },
+  { key: "graph", label: "Build relationship graph" },
+  { key: "gaps", label: "Detect open problems & gaps" },
+  { key: "plans", label: "Build reading plans" },
+];
+
+const EDGE_COLORS = {
+  builds_on: "#16a34a",
+  contrasts_with: "#dc2626",
+  shares_method: "#2563eb",
+  applies_to: "#9333ea",
+};
+
+export default function Home() {
+  const [topic, setTopic] = useState("");
+  const [stageStatus, setStageStatus] = useState({});
+  const [papers, setPapers] = useState([]);
+  const [landscape, setLandscape] = useState(null);
+  const [graph, setGraph] = useState(null);
+  const [gaps, setGaps] = useState(null);
+  const [plans, setPlans] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [tab, setTab] = useState("landscape");
+
+  async function runSearch() {
+    if (!topic.trim() || running) return;
+    setRunning(true);
+    setStageStatus({});
+    setPapers([]);
+    setLandscape(null);
+    setGraph(null);
+    setGaps(null);
+    setPlans(null);
+
+    const res = await fetch("http://localhost:8000/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        handleEvent(JSON.parse(line.slice(6)));
+      }
+    }
+    setRunning(false);
+  }
+
+  function handleEvent(evt) {
+    const { stage, status, data } = evt;
+    setStageStatus((prev) => ({ ...prev, [stage]: status }));
+    if (stage === "error") {
+      alert("Pipeline error: " + (data?.message || "unknown"));
+      setRunning(false);
+      return;
+    }
+    if (stage === "extract" && status === "progress")
+      setPapers((prev) => [...prev, data]);
+    if (stage === "synthesize" && status === "done") setLandscape(data);
+    if (stage === "graph" && status === "done") setGraph(data);
+    if (stage === "gaps" && status === "done") setGaps(data);
+    if (stage === "plans" && status === "done") setPlans(data);
+  }
+
+  function flowData() {
+    if (!graph?.nodes) return { nodes: [], edges: [] };
+    const n = graph.nodes.length;
+    const nodes = graph.nodes.map((node, i) => {
+      const angle = (2 * Math.PI * i) / n;
+      return {
+        id: String(node.id),
+        position: { x: 400 + 300 * Math.cos(angle), y: 300 + 300 * Math.sin(angle) },
+        data: { label: node.title.slice(0, 40) + (node.title.length > 40 ? "…" : "") },
+        style: {
+          fontSize: 11,
+          width: 180,
+          padding: 6,
+          borderRadius: 8,
+          border: "1px solid #cbd5e1",
+          background: "#fff",
+        },
+      };
+    });
+    const edges = (graph.edges || []).map((e, i) => ({
+      id: `e${i}`,
+      source: String(e.source),
+      target: String(e.target),
+      label: e.label,
+      animated: e.type === "builds_on",
+      style: { stroke: EDGE_COLORS[e.type] || "#94a3b8" },
+      labelStyle: { fontSize: 9, fill: "#475569" },
+    }));
+    return { nodes, edges };
+  }
+
+  const hasResults = landscape || graph || gaps || plans || papers.length > 0;
+  const { nodes, edges } = flowData();
+
+  const TABS = [
+    ["landscape", "Landscape"],
+    ["graph", "Graph"],
+    ["gaps", "Gaps & Problems"],
+    ["plans", "Reading Plans"],
+    ["papers", `Papers (${papers.length})`],
+  ];
+
+  return (
+    <main className="min-h-screen bg-slate-50 text-slate-900 px-6 py-10 max-w-6xl mx-auto">
+      <h1 className="text-3xl font-bold mb-2">ML Research Mapper</h1>
+      <p className="text-slate-600 mb-6">
+        Map an entire ML research field from a single search.
+      </p>
+
+      <div className="flex gap-2 mb-8">
+        <input
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && runSearch()}
+          placeholder="e.g. retrieval-augmented generation"
+          className="flex-1 border border-slate-300 rounded-lg px-4 py-3"
+        />
+        <button
+          onClick={runSearch}
+          disabled={running}
+          className="bg-slate-900 text-white px-6 py-3 rounded-lg disabled:opacity-50"
+        >
+          {running ? "Mapping..." : "Map field"}
+        </button>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-2 mb-10">
+        {STAGES.map((s) => {
+          const st = stageStatus[s.key];
+          return (
+            <div key={s.key} className="flex items-center gap-3">
+              <span
+                className={
+                  "w-3 h-3 rounded-full shrink-0 " +
+                  (st === "done"
+                    ? "bg-green-500"
+                    : st === "running" || st === "progress"
+                    ? "bg-amber-400 animate-pulse"
+                    : "bg-slate-300")
+                }
+              />
+              <span className="text-sm">{s.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {hasResults && (
+        <>
+          <div className="flex gap-1 border-b border-slate-200 mb-6 flex-wrap">
+            {TABS.map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={
+                  "px-4 py-2 text-sm font-medium border-b-2 -mb-px " +
+                  (tab === key
+                    ? "border-slate-900 text-slate-900"
+                    : "border-transparent text-slate-500")
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "landscape" && landscape && (
+            <section>
+              <p className="text-slate-700 mb-5">{landscape.overview}</p>
+              <h3 className="font-semibold mb-2">Clusters</h3>
+              <div className="grid md:grid-cols-2 gap-3 mb-5">
+                {landscape.clusters?.map((c, i) => (
+                  <div key={i} className="border border-slate-200 rounded-lg p-4 bg-white">
+                    <div className="font-medium">{c.name}</div>
+                    <div className="text-sm text-slate-600 mt-1">{c.description}</div>
+                  </div>
+                ))}
+              </div>
+              <h3 className="font-semibold mb-2">Tensions</h3>
+              <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                {landscape.tensions?.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+            </section>
+          )}
+
+          {tab === "graph" && (
+            <section>
+              {graph ? (
+                <>
+                  <div className="flex gap-4 text-xs mb-3 flex-wrap">
+                    {Object.entries(EDGE_COLORS).map(([type, color]) => (
+                      <span key={type} className="flex items-center gap-1">
+                        <span className="w-4 h-0.5 inline-block" style={{ background: color }} />
+                        {type.replace("_", " ")}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ height: 600 }} className="border border-slate-200 rounded-lg bg-white">
+                    <ReactFlow nodes={nodes} edges={edges} fitView>
+                      <Background />
+                      <Controls />
+                    </ReactFlow>
+                  </div>
+                </>
+              ) : (
+                <p className="text-slate-500 text-sm">Building graph…</p>
+              )}
+            </section>
+          )}
+
+          {tab === "gaps" && gaps && (
+            <section className="grid md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="font-semibold mb-2">Open Problems</h3>
+                <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                  {gaps.open_problems?.map((o, i) => <li key={i}>{o}</li>)}
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Unexplored Gaps</h3>
+                <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                  {gaps.gaps?.map((g, i) => <li key={i}>{g}</li>)}
+                </ul>
+              </div>
+            </section>
+          )}
+
+          {tab === "plans" && plans && (
+            <section className="grid md:grid-cols-3 gap-5">
+              {["beginner", "phd", "industry"].map((level) => (
+                <div key={level}>
+                  <h3 className="font-semibold mb-2 capitalize">{level}</h3>
+                  <ol className="space-y-2">
+                    {plans[level]?.map((item, i) => (
+                      <li key={i} className="border border-slate-200 rounded-lg p-3 bg-white text-sm">
+                        <div className="font-medium">{i + 1}. {item.title}</div>
+                        <div className="text-slate-600 text-xs mt-1">{item.why}</div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </section>
+          )}
+
+          {tab === "papers" && (
+            <section className="space-y-3">
+              {papers
+                .slice()
+                .sort((a, b) => b.score - a.score)
+                .map((p, i) => (
+                  <div key={i} className="border border-slate-200 rounded-lg p-4 bg-white">
+                    <div className="flex justify-between gap-3">
+                      <a href={p.url} target="_blank" rel="noreferrer"
+                         className="font-medium hover:underline">
+                        {p.title}
+                      </a>
+                      <span className="text-xs bg-slate-100 px-2 py-1 rounded h-fit shrink-0">
+                        {p.score} · {p.year}
+                      </span>
+                    </div>
+                    <dl className="text-sm mt-2 space-y-1 text-slate-700">
+                      <div><span className="font-medium">Problem:</span> {p.problem}</div>
+                      <div><span className="font-medium">Method:</span> {p.method}</div>
+                      <div><span className="font-medium">Results:</span> {p.results}</div>
+                      <div><span className="font-medium">Contribution:</span> {p.contribution}</div>
+                      <div><span className="font-medium">Limitations:</span> {p.limitations}</div>
+                    </dl>
+                  </div>
+                ))}
+            </section>
+          )}
+        </>
+      )}
+    </main>
+  );
+}
