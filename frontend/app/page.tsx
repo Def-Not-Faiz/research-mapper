@@ -21,6 +21,8 @@ const EDGE_COLORS: Record<string, string> = {
   applies_to: "#c084fc",
 };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+
 // ---- Animated starfield drawn on a canvas ----
 function Starfield() {
   const ref = useRef<HTMLCanvasElement | null>(null);
@@ -123,7 +125,7 @@ export default function Home() {
     setPlans(null);
 
     try {
-      const res = await fetch("http://localhost:8000/api/search", {
+      const res = await fetch(`${API_BASE}/api/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic }),
